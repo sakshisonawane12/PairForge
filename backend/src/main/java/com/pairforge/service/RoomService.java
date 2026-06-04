@@ -39,12 +39,19 @@ public class RoomService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         return roomRepository.findByCreatedBy(user);
     }
-
+    public void updateRoomCode(String roomCode, String content) {
+        Room room = roomRepository.findByRoomCode(roomCode)
+                .orElseThrow(() -> new RuntimeException("Room not found"));
+        room.setCurrentCode(content);
+        roomRepository.save(room);
+    }
     private String generateUniqueRoomCode() {
         String code;
         do {
             code = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         } while (roomRepository.existsByRoomCode(code));
         return code;
+
+
     }
 }
