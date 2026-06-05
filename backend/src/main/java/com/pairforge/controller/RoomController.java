@@ -8,6 +8,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import com.pairforge.service.ChatService;
+import com.pairforge.model.ChatMessage;
+
 
 @RestController
 @RequestMapping("/api/rooms")
@@ -15,6 +18,7 @@ import java.util.List;
 public class RoomController {
 
     private final RoomService roomService;
+    private final ChatService chatService;
 
     @PostMapping("/create")
     public ResponseEntity<Room> createRoom(
@@ -33,6 +37,12 @@ public class RoomController {
     public ResponseEntity<List<Room>> getMyRooms(
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(roomService.getMyRooms(userDetails.getUsername()));
+    }
+
+    @GetMapping("/{roomCode}/messages")
+    public ResponseEntity<List<ChatMessage>> getChatHistory(
+            @PathVariable String roomCode) {
+        return ResponseEntity.ok(chatService.getLast50Messages(roomCode));
     }
 
     record CreateRoomRequest(String name) {}
