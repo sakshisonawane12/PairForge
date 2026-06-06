@@ -43,7 +43,8 @@ public class ChatWebSocketController {
                 roomCode, username,
                 username + (type.equals("JOIN") ? " joined the room" : " left the room"),
                 type);
-
+        messagingTemplate.convertAndSend(
+                "/topic/room/" + roomCode + "/presence", presence);
         messagingTemplate.convertAndSend(
                 "/topic/room/" + roomCode + "/chat", presence);
     }

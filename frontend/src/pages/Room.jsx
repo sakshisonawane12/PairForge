@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
-
 import useWebSocket from '../hooks/useWebSocket';
 import { getRoom, getChatHistory, executeCode } from '../services/api';
 
@@ -18,11 +17,14 @@ export default function Room() {
     const [output, setOutput] = useState('');
     const [running, setRunning] = useState(false);
     const [showOutput, setShowOutput] = useState(false);
+    const [saveStatus, setSaveStatus] = useState('');
+    const saveTimerRef = useRef(null);
+
     const handleRemoteCodeChange = (newCode) => {
         setCode(newCode);
     };
 
-    const { messages, connected, sendMessage, sendCodeChange } =
+    const { messages, connected, sendMessage, sendCodeChange, onlineUsers } =
         useWebSocket(roomCode, username, handleRemoteCodeChange);
 
     useEffect(() => {
@@ -41,7 +43,18 @@ export default function Room() {
     }, [roomCode]);
 
     useEffect(() => {
-        setChatMessages((prev) => [...prev, ...messages]);
+        if (messages.length > 0) {
+            const latest = messages[messages.length - 1];
+            setChatMessages((prev) => {
+                const isDuplicate = prev.some(
+                    (m) => m.sentAt === latest.sentAt &&
+                        m.username === latest.username &&
+                        m.content === latest.content
+                );
+                if (isDuplicate) return prev;
+                return [...prev, latest];
+            });
+        }
     }, [messages]);
 
     useEffect(() => {
@@ -51,7 +64,16 @@ export default function Room() {
     const handleCodeChange = (val) => {
         setCode(val);
         sendCodeChange(val);
+
+        // Show saving indicator
+        setSaveStatus('Saving...');
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+            setSaveStatus('Saved ✓');
+            setTimeout(() => setSaveStatus(''), 2000);
+        }, 1500);
     };
+
     const getDefaultCode = (lang) => {
         switch(lang) {
             case 'python':     return '# Start coding here...\n';
@@ -62,6 +84,7 @@ export default function Room() {
             default:           return '// Start coding here...\n';
         }
     };
+
     const handleSendMessage = (e) => {
         e.preventDefault();
         if (chatInput.trim()) {
@@ -69,6 +92,7 @@ export default function Room() {
             setChatInput('');
         }
     };
+
     const handleRunCode = async () => {
         setRunning(true);
         setShowOutput(true);
@@ -84,6 +108,13 @@ export default function Room() {
             setRunning(false);
         }
     };
+
+    const copyRoomLink = () => {
+        const link = `${window.location.origin}/room/${roomCode}`;
+        navigator.clipboard.writeText(link);
+        alert(`Room link copied! Share this: ${link}`);
+    };
+
     const languages = ['javascript', 'python', 'java', 'cpp', 'typescript', 'go'];
 
     return (
@@ -91,17 +122,25 @@ export default function Room() {
             {/* Header */}
             <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-2 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-          <span className="text-white font-bold cursor-pointer"
-                onClick={() => navigate('/home')}>
-            🔥 PairForge
-          </span>
+                    <span className="text-white font-bold cursor-pointer"
+                          onClick={() => navigate('/home')}>
+                        🔥 PairForge
+                    </span>
                     <span className="text-gray-400 text-sm">|</span>
                     <span className="text-white text-sm">{room?.name}</span>
                     <span className="bg-[#238636] text-white text-xs px-2 py-1 rounded font-mono">
-            {roomCode}
-          </span>
+                        {roomCode}
+                    </span>
+                    <button
+                        onClick={copyRoomLink}
+                        className="text-gray-400 hover:text-white text-xs border border-[#30363d] px-2 py-1 rounded">
+                        🔗 Copy Link
+                    </button>
                 </div>
                 <div className="flex items-center gap-3">
+                    <span className="text-green-400 text-xs">
+                        👥 {onlineUsers.length} online
+                    </span>
                     <select
                         value={language}
                         onChange={(e) => {
@@ -120,11 +159,20 @@ export default function Room() {
                         className="bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 text-white text-xs px-3 py-1 rounded font-medium">
                         {running ? '⏳ Running...' : '▶ Run'}
                     </button>
+                    {saveStatus && (
+                        <span className={`text-xs ${
+                            saveStatus === 'Saved ✓'
+                                ? 'text-green-400'
+                                : 'text-yellow-400'
+                        }`}>
+        {saveStatus}
+    </span>
+                    )}
                     <span className={`text-xs px-2 py-1 rounded ${connected
                         ? 'bg-green-900 text-green-300'
                         : 'bg-red-900 text-red-300'}`}>
-            {connected ? '● Live' : '○ Offline'}
-          </span>
+                        {connected ? '● Live' : '○ Offline'}
+                    </span>
                     <span className="text-gray-400 text-sm">👤 {username}</span>
                 </div>
             </div>
@@ -158,8 +206,8 @@ export default function Room() {
                                 </button>
                             </div>
                             <pre className="flex-1 overflow-auto p-4 text-xs text-green-300 font-mono">
-        {output}
-      </pre>
+                                {output}
+                            </pre>
                         </div>
                     )}
                 </div>
@@ -169,6 +217,14 @@ export default function Room() {
                      className="bg-[#161b22] border-l border-[#30363d] flex flex-col">
                     <div className="px-4 py-3 border-b border-[#30363d]">
                         <h3 className="text-white font-medium text-sm">💬 Chat</h3>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                            {onlineUsers.map((u, i) => (
+                                <span key={i}
+                                      className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">
+                                    ● {u}
+                                </span>
+                            ))}
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-2">
                         {chatMessages.length === 0 && (
@@ -182,9 +238,9 @@ export default function Room() {
                             }`}>
                                 {msg.type === 'CHAT' ? (
                                     <div>
-              <span className="text-[#238636] font-medium">
-                {msg.username}:{' '}
-              </span>
+                                        <span className="text-[#238636] font-medium">
+                                            {msg.username}:{' '}
+                                        </span>
                                         <span className="text-gray-300">{msg.content}</span>
                                     </div>
                                 ) : (
@@ -211,6 +267,5 @@ export default function Room() {
                 </div>
             </div>
         </div>
-
     );
 }

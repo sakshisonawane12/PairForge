@@ -5,6 +5,7 @@ import SockJS from 'sockjs-client';
 export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
     const [messages, setMessages] = useState([]);
     const [connected, setConnected] = useState(false);
+    const [onlineUsers, setOnlineUsers] = useState([]);
     const clientRef = useRef(null);
     const subscriptionRef = useRef(null);
     const codeSubscriptionRef = useRef(null);
@@ -33,7 +34,21 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
                         setMessages((prev) => [...prev, body]);
                     }
                 );
-
+                client.subscribe(`/topic/room/${roomCode}/presence`, (msg) => {
+                    const body = JSON.parse(msg.body);
+                    if (body.type === 'USER_JOINED') {
+                        setOnlineUsers((prev) => {
+                            if (!prev.includes(body.username)) return [...prev, body.username];
+                            return prev;
+                        });
+                    } else if (body.type === 'USER_LEFT') {
+                        setOnlineUsers((prev) => prev.filter((u) => u !== body.username));
+                    }
+                });
+                setOnlineUsers((prev) => {
+                    if (!prev.includes(username)) return [...prev, username];
+                    return prev;
+                });
                 // Subscribe to code changes
                 if (codeSubscriptionRef.current) codeSubscriptionRef.current.unsubscribe();
                 codeSubscriptionRef.current = client.subscribe(
@@ -95,5 +110,5 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
         isRemoteChange.current = false;
     };
 
-    return { messages, connected, sendMessage, sendCodeChange };
+    return { messages, connected, sendMessage, sendCodeChange, onlineUsers };
 }
