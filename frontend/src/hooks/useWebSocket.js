@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
-export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
+export default function useWebSocket(roomCode, username, onFileCreated) {
     const [messages, setMessages] = useState([]);
     const [connected, setConnected] = useState(false);
     const [onlineUsers, setOnlineUsers] = useState([]);
     const clientRef = useRef(null);
     const subscriptionRef = useRef(null);
-    const codeSubscriptionRef = useRef(null);
+    const fileSubscriptionRef = useRef(null);
     const activatedRef = useRef(false);
-    const isRemoteChange = useRef(false);
 
     useEffect(() => {
         if (!roomCode || !username || activatedRef.current) return;
@@ -19,13 +18,11 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
         const client = new Client({
             webSocketFactory: () => new SockJS('http://localhost:8080/ws'),
             reconnectDelay: 5000,
-            connectHeaders: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
+
             onConnect: () => {
                 setConnected(true);
 
-                // Subscribe to chat
+                // Chat subscription
                 if (subscriptionRef.current) subscriptionRef.current.unsubscribe();
                 subscriptionRef.current = client.subscribe(
                     `/topic/room/${roomCode}/chat`,
@@ -34,6 +31,8 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
                         setMessages((prev) => [...prev, body]);
                     }
                 );
+
+                // Presence subscription
                 client.subscribe(`/topic/room/${roomCode}/presence`, (msg) => {
                     const body = JSON.parse(msg.body);
                     if (body.type === 'USER_JOINED') {
@@ -45,19 +44,21 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
                         setOnlineUsers((prev) => prev.filter((u) => u !== body.username));
                     }
                 });
+
                 setOnlineUsers((prev) => {
                     if (!prev.includes(username)) return [...prev, username];
                     return prev;
                 });
-                // Subscribe to code changes
-                if (codeSubscriptionRef.current) codeSubscriptionRef.current.unsubscribe();
-                codeSubscriptionRef.current = client.subscribe(
+
+                // File created subscription
+                if (fileSubscriptionRef.current) fileSubscriptionRef.current.unsubscribe();
+                fileSubscriptionRef.current = client.subscribe(
                     `/topic/room/${roomCode}`,
                     (msg) => {
                         const body = JSON.parse(msg.body);
-                        if (body.type === 'CODE_CHANGE' && onRemoteCodeChange) {
-                            isRemoteChange.current = true;
-                            onRemoteCodeChange(body.content);
+                        if (body.type === 'FILE_CREATED' && onFileCreated) {
+                            console.log('FILE_CREATED received!', body);
+                            onFileCreated(body);
                         }
                     }
                 );
@@ -87,6 +88,7 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
                     });
                 } catch (e) {}
                 clientRef.current.deactivate();
+                clientRef.current = null;
             }
         };
     }, [roomCode, username]);
@@ -100,15 +102,18 @@ export default function useWebSocket(roomCode, username, onRemoteCodeChange) {
         }
     };
 
-    const sendCodeChange = (content) => {
-        if (clientRef.current && connected && !isRemoteChange.current) {
+    const sendFileCreated = (fileName, language) => {
+        if (clientRef.current && connected) {
             clientRef.current.publish({
-                destination: `/app/room/${roomCode}/code`,
-                body: JSON.stringify({ content, type: 'CODE_CHANGE' }),
+                destination: `/app/room/${roomCode}/file-created`,
+                body: JSON.stringify({
+                    content: fileName,
+                    language,
+                    type: 'FILE_CREATED'
+                }),
             });
         }
-        isRemoteChange.current = false;
     };
 
-    return { messages, connected, sendMessage, sendCodeChange, onlineUsers };
+    return { messages, connected, sendMessage, sendFileCreated, onlineUsers };
 }

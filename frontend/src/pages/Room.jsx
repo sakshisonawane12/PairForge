@@ -1,271 +1,798 @@
-import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import Editor from '@monaco-editor/react';
-import useWebSocket from '../hooks/useWebSocket';
-import { getRoom, getChatHistory, executeCode } from '../services/api';
+import { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import Editor from "@monaco-editor/react";
+import useWebSocket from "../hooks/useWebSocket";
+import PasswordModal from "../components/PasswordModal";
+import HistoryPanel from "../components/HistoryPanel";
+import FileTabs from "../components/FileTabs";
+import {
+  getRoom,
+  getChatHistory,
+  executeCode,
+  verifyRoomPassword,
+  saveSnapshot,
+  getRoomFiles,
+  createRoomFile,
+  updateRoomFile,
+  deleteRoomFile,
+  getMyProfile,
+} from "../services/api";
+import useYjs from "../hooks/useYjs";
+import { useTheme } from "../context/ThemeContext";
+import ThemeToggle from "../components/ThemeToggle";
+const mono = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
 
 export default function Room() {
-    const { roomCode } = useParams();
-    const navigate = useNavigate();
-    const username = localStorage.getItem('username');
-    const [room, setRoom] = useState(null);
-    const [code, setCode] = useState('// Start coding here...');
-    const [language, setLanguage] = useState('javascript');
-    const [chatInput, setChatInput] = useState('');
-    const [chatMessages, setChatMessages] = useState([]);
-    const chatEndRef = useRef(null);
-    const [output, setOutput] = useState('');
-    const [running, setRunning] = useState(false);
-    const [showOutput, setShowOutput] = useState(false);
-    const [saveStatus, setSaveStatus] = useState('');
-    const saveTimerRef = useRef(null);
+  const navigate = useNavigate();
+  const [username, setUsername] = useState("");
+  const { theme } = useTheme(); // ← add this line
+  const { roomCode } = useParams();
+  useEffect(() => {
+    getMyProfile()
+      .then((res) => setUsername(res.data.username))
+      .catch(() => navigate("/login"));
+  }, []);
 
-    const handleRemoteCodeChange = (newCode) => {
-        setCode(newCode);
-    };
+  const [room, setRoom] = useState(null);
+  const [code, setCode] = useState("// Start coding here...");
+  const [language, setLanguage] = useState("javascript");
+  const [chatInput, setChatInput] = useState("");
+  const [chatMessages, setChatMessages] = useState([]);
+  const [output, setOutput] = useState("");
+  const [running, setRunning] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordVerified, setPasswordVerified] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [activeFile, setActiveFile] = useState(null);
+  const [editorMounted, setEditorMounted] = useState(false);
 
-    const { messages, connected, sendMessage, sendCodeChange, onlineUsers } =
-        useWebSocket(roomCode, username, handleRemoteCodeChange);
+  const chatEndRef = useRef(null);
+  const saveTimerRef = useRef(null);
+  const loadedRef = useRef(false);
+  const fileContentsRef = useRef({});
+  const activeFileRef = useRef(null);
+  const editorRef = useRef(null);
 
-    useEffect(() => {
-        if (!username) { navigate('/'); return; }
-        getRoom(roomCode)
-            .then((res) => {
-                setRoom(res.data);
-                setCode(res.data.currentCode || '// Start coding here...');
-                setLanguage(res.data.language || 'javascript');
-            })
-            .catch(() => navigate('/home'));
+  const getDefaultCode = (lang) => {
+    switch (lang) {
+      case "python":
+        return "# Start coding here...\n";
+      case "java":
+        return "// Start coding here...\npublic class Solution {\n    public static void main(String[] args) {\n        \n    }\n}";
+      case "cpp":
+        return "// Start coding here...\n#include<iostream>\nusing namespace std;\nint main() {\n    \n    return 0;\n}";
+      case "typescript":
+        return "// Start coding here...\n";
+      case "go":
+        return '// Start coding here...\npackage main\nimport "fmt"\nfunc main() {\n    \n}';
+      default:
+        return "// Start coding here...\n";
+    }
+  };
 
-        getChatHistory(roomCode)
-            .then((res) => setChatMessages(res.data))
-            .catch(() => {});
-    }, [roomCode]);
+  const handleRemoteFileCreated = () => {
+    getRoomFiles(roomCode)
+      .then((res) => {
+        setFiles([...res.data]);
+        res.data.forEach((f) => {
+          if (!fileContentsRef.current[f.fileName])
+            fileContentsRef.current[f.fileName] = f.content || "";
+        });
+      })
+      .catch(() => {});
+  };
 
-    useEffect(() => {
-        if (messages.length > 0) {
-            const latest = messages[messages.length - 1];
-            setChatMessages((prev) => {
-                const isDuplicate = prev.some(
-                    (m) => m.sentAt === latest.sentAt &&
-                        m.username === latest.username &&
-                        m.content === latest.content
-                );
-                if (isDuplicate) return prev;
-                return [...prev, latest];
-            });
+  const { messages, connected, sendMessage, sendFileCreated, onlineUsers } =
+    useWebSocket(roomCode, username, handleRemoteFileCreated);
+
+  const { connected: yjsConnected, awarenessUsers } = useYjs(
+    roomCode,
+    activeFile?.fileName,
+    username,
+    editorMounted ? editorRef : null,
+  );
+
+  useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+
+    getRoom(roomCode)
+      .then((res) => {
+        setRoom(res.data);
+        setCode(res.data.currentCode || "// Start coding here...");
+        setLanguage(res.data.language || "javascript");
+        if (res.data.private && !passwordVerified) setShowPasswordModal(true);
+      })
+      .catch(() => navigate("/home"));
+
+    getChatHistory(roomCode)
+      .then((res) => setChatMessages(res.data))
+      .catch(() => {});
+
+    getRoomFiles(roomCode)
+      .then((res) => {
+        if (res.data.length > 0) {
+          setFiles(res.data);
+          setActiveFile(res.data[0]);
+          setCode(res.data[0].content || getDefaultCode(res.data[0].language));
+          setLanguage(res.data[0].language);
+          res.data.forEach((f) => {
+            fileContentsRef.current[f.fileName] = f.content || "";
+          });
+        } else {
+          createRoomFile(roomCode, {
+            fileName: "main.js",
+            language: "javascript",
+          }).then((r) => {
+            setFiles([r.data]);
+            setActiveFile(r.data);
+            setCode(getDefaultCode("javascript"));
+            fileContentsRef.current["main.js"] = getDefaultCode("javascript");
+          });
         }
-    }, [messages]);
+      })
+      .catch(() => {});
+  }, [roomCode]);
 
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [chatMessages]);
+  useEffect(() => {
+    activeFileRef.current = activeFile;
+  }, [activeFile]);
 
-    const handleCodeChange = (val) => {
-        setCode(val);
-        sendCodeChange(val);
+  useEffect(() => {
+    if (messages.length > 0) {
+      const latest = messages[messages.length - 1];
+      setChatMessages((prev) => {
+        const dup = prev.some(
+          (m) =>
+            m.sentAt === latest.sentAt &&
+            m.username === latest.username &&
+            m.content === latest.content,
+        );
+        return dup ? prev : [...prev, latest];
+      });
+    }
+  }, [messages]);
 
-        // Show saving indicator
-        setSaveStatus('Saving...');
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => {
-            setSaveStatus('Saved ✓');
-            setTimeout(() => setSaveStatus(''), 2000);
-        }, 1500);
-    };
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
 
-    const getDefaultCode = (lang) => {
-        switch(lang) {
-            case 'python':     return '# Start coding here...\n';
-            case 'java':       return '// Start coding here...\npublic class Solution {\n    public static void main(String[] args) {\n        \n    }\n}';
-            case 'cpp':        return '// Start coding here...\n#include<iostream>\nusing namespace std;\nint main() {\n    \n    return 0;\n}';
-            case 'typescript': return '// Start coding here...\n';
-            case 'go':         return '// Start coding here...\npackage main\nimport "fmt"\nfunc main() {\n    \n}';
-            default:           return '// Start coding here...\n';
-        }
-    };
+  const handlePasswordSubmit = async (password) => {
+    try {
+      const res = await verifyRoomPassword(roomCode, password);
+      if (res.data.valid) {
+        setPasswordVerified(true);
+        setShowPasswordModal(false);
+      } else alert("Wrong password!");
+    } catch {
+      alert("Error verifying password");
+    }
+  };
 
-    const handleSendMessage = (e) => {
-        e.preventDefault();
-        if (chatInput.trim()) {
-            sendMessage(chatInput.trim());
-            setChatInput('');
-        }
-    };
+  const handleCodeChange = (val) => {
+    setCode(val || "");
+    if (activeFile) fileContentsRef.current[activeFile.fileName] = val || "";
+    setSaveStatus("saving...");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      if (activeFile && val)
+        updateRoomFile(roomCode, activeFile.fileName, { content: val }).catch(
+          () => {},
+        );
+      setSaveStatus("saved ✓");
+      setTimeout(() => setSaveStatus(""), 2000);
+    }, 1500);
+  };
 
-    const handleRunCode = async () => {
-        setRunning(true);
-        setShowOutput(true);
-        setOutput('Running...');
-        try {
-            const res = await executeCode({ code, language });
-            const data = res.data;
-            const out = data.stdout || data.stderr || 'No output';
-            setOutput(`Status: ${data.status}\n\n${out}`);
-        } catch (err) {
-            setOutput('Error: Failed to execute code');
-        } finally {
-            setRunning(false);
-        }
-    };
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (chatInput.trim()) {
+      sendMessage(chatInput.trim());
+      setChatInput("");
+    }
+  };
 
-    const copyRoomLink = () => {
-        const link = `${window.location.origin}/room/${roomCode}`;
-        navigator.clipboard.writeText(link);
-        alert(`Room link copied! Share this: ${link}`);
-    };
+  const handleRunCode = async () => {
+    setRunning(true);
+    setShowOutput(true);
+    setOutput("running...");
+    try {
+      const res = await executeCode({ code, language });
+      const data = res.data;
+      setOutput(
+        `exit: ${data.status}\n\n${data.stdout || data.stderr || "no output"}`,
+      );
+    } catch {
+      setOutput("error: failed to execute");
+    } finally {
+      setRunning(false);
+    }
+  };
 
-    const languages = ['javascript', 'python', 'java', 'cpp', 'typescript', 'go'];
+  const copyRoomLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/room/${roomCode}`);
+    alert(`Link copied!`);
+  };
 
-    return (
-        <div className="h-screen bg-[#0d1117] flex flex-col">
-            {/* Header */}
-            <div className="bg-[#161b22] border-b border-[#30363d] px-4 py-2 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <span className="text-white font-bold cursor-pointer"
-                          onClick={() => navigate('/home')}>
-                        🔥 PairForge
-                    </span>
-                    <span className="text-gray-400 text-sm">|</span>
-                    <span className="text-white text-sm">{room?.name}</span>
-                    <span className="bg-[#238636] text-white text-xs px-2 py-1 rounded font-mono">
-                        {roomCode}
-                    </span>
-                    <button
-                        onClick={copyRoomLink}
-                        className="text-gray-400 hover:text-white text-xs border border-[#30363d] px-2 py-1 rounded">
-                        🔗 Copy Link
-                    </button>
-                </div>
-                <div className="flex items-center gap-3">
-                    <span className="text-green-400 text-xs">
-                        👥 {onlineUsers.length} online
-                    </span>
-                    <select
-                        value={language}
-                        onChange={(e) => {
-                            setLanguage(e.target.value);
-                            setCode(getDefaultCode(e.target.value));
-                            sendCodeChange(getDefaultCode(e.target.value));
-                        }}
-                        className="bg-[#0d1117] border border-[#30363d] text-white text-sm rounded px-2 py-1">
-                        {languages.map((l) => (
-                            <option key={l} value={l}>{l}</option>
-                        ))}
-                    </select>
-                    <button
-                        onClick={handleRunCode}
-                        disabled={running}
-                        className="bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 text-white text-xs px-3 py-1 rounded font-medium">
-                        {running ? '⏳ Running...' : '▶ Run'}
-                    </button>
-                    {saveStatus && (
-                        <span className={`text-xs ${
-                            saveStatus === 'Saved ✓'
-                                ? 'text-green-400'
-                                : 'text-yellow-400'
-                        }`}>
-        {saveStatus}
-    </span>
-                    )}
-                    <span className={`text-xs px-2 py-1 rounded ${connected
-                        ? 'bg-green-900 text-green-300'
-                        : 'bg-red-900 text-red-300'}`}>
-                        {connected ? '● Live' : '○ Offline'}
-                    </span>
-                    <span className="text-gray-400 text-sm">👤 {username}</span>
-                </div>
-            </div>
+  const handleSaveSnapshot = async () => {
+    try {
+      await saveSnapshot(roomCode, { content: code, language });
+      setSaveStatus("snapshot saved ✓");
+      setTimeout(() => setSaveStatus(""), 2000);
+    } catch {
+      console.error("Failed to save snapshot");
+    }
+  };
 
-            {/* Main */}
-            <div className="flex flex-1 overflow-hidden w-full">
-                {/* Editor */}
-                <div className="flex-1 min-w-0 flex flex-col">
-                    <div className={showOutput ? 'h-2/3' : 'h-full'}>
-                        <Editor
-                            height="100%"
-                            language={language}
-                            value={code}
-                            onChange={handleCodeChange}
-                            theme="vs-dark"
-                            options={{
-                                fontSize: 14,
-                                minimap: { enabled: false },
-                                scrollBeyondLastLine: false,
-                                padding: { top: 16 },
-                            }}
-                        />
-                    </div>
-                    {showOutput && (
-                        <div className="h-1/3 bg-[#0d1117] border-t border-[#30363d] flex flex-col">
-                            <div className="flex items-center justify-between px-4 py-2 border-b border-[#30363d]">
-                                <span className="text-white text-xs font-medium">▶ Output</span>
-                                <button onClick={() => setShowOutput(false)}
-                                        className="text-gray-400 hover:text-white text-xs">
-                                    ✕ Close
-                                </button>
-                            </div>
-                            <pre className="flex-1 overflow-auto p-4 text-xs text-green-300 font-mono">
-                                {output}
-                            </pre>
-                        </div>
-                    )}
-                </div>
+  const handleRestore = (snapshot) => {
+    setCode(snapshot.content);
+    setLanguage(snapshot.language);
+    setShowHistory(false);
+    setSaveStatus("restored ✓");
+    setTimeout(() => setSaveStatus(""), 2000);
+  };
 
-                {/* Chat Panel */}
-                <div style={{width: '280px', flexShrink: 0}}
-                     className="bg-[#161b22] border-l border-[#30363d] flex flex-col">
-                    <div className="px-4 py-3 border-b border-[#30363d]">
-                        <h3 className="text-white font-medium text-sm">💬 Chat</h3>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                            {onlineUsers.map((u, i) => (
-                                <span key={i}
-                                      className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">
-                                    ● {u}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                        {chatMessages.length === 0 && (
-                            <p className="text-gray-500 text-xs text-center mt-4">
-                                No messages yet
-                            </p>
-                        )}
-                        {chatMessages.map((msg, i) => (
-                            <div key={i} className={`text-xs ${
-                                msg.type === 'CHAT' ? '' : 'text-center text-gray-500 italic'
-                            }`}>
-                                {msg.type === 'CHAT' ? (
-                                    <div>
-                                        <span className="text-[#238636] font-medium">
-                                            {msg.username}:{' '}
-                                        </span>
-                                        <span className="text-gray-300">{msg.content}</span>
-                                    </div>
-                                ) : (
-                                    <span>{msg.content}</span>
-                                )}
-                            </div>
-                        ))}
-                        <div ref={chatEndRef} />
-                    </div>
-                    <form onSubmit={handleSendMessage}
-                          className="p-3 border-t border-[#30363d] flex gap-2">
-                        <input
-                            type="text"
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            placeholder="Type a message..."
-                            className="flex-1 min-w-0 bg-[#0d1117] border border-[#30363d] rounded px-3 py-1 text-white text-xs placeholder-gray-500 focus:outline-none focus:border-[#238636]"
-                        />
-                        <button type="submit"
-                                className="bg-[#238636] text-white px-3 py-1 rounded text-xs hover:bg-[#2ea043] flex-shrink-0">
-                            Send
-                        </button>
-                    </form>
-                </div>
-            </div>
-        </div>
+  const handleSelectFile = async (file) => {
+    if (activeFile?.id === file.id) return;
+    if (activeFile)
+      await updateRoomFile(roomCode, activeFile.fileName, {
+        content: fileContentsRef.current[activeFile.fileName] ?? code,
+      }).catch(() => {});
+    setActiveFile(file);
+    setCode(
+      fileContentsRef.current[file.fileName] ??
+        file.content ??
+        getDefaultCode(file.language),
     );
+    setLanguage(file.language);
+  };
+
+  const handleAddFile = async (fileName, lang) => {
+    try {
+      if (activeFile)
+        await updateRoomFile(roomCode, activeFile.fileName, {
+          content: fileContentsRef.current[activeFile.fileName] ?? code,
+        }).catch(() => {});
+      const res = await createRoomFile(roomCode, { fileName, language: lang });
+      const def = getDefaultCode(lang);
+      fileContentsRef.current[fileName] = def;
+      setFiles((prev) => [...prev, res.data]);
+      setActiveFile(res.data);
+      setCode(def);
+      setLanguage(lang);
+      sendFileCreated(fileName, lang);
+    } catch {
+      alert("File already exists or invalid name!");
+    }
+  };
+
+  const handleDeleteFile = async (fileName) => {
+    if (!window.confirm(`Delete ${fileName}?`)) return;
+    try {
+      await deleteRoomFile(roomCode, fileName);
+      const updated = files.filter((f) => f.fileName !== fileName);
+      setFiles(updated);
+      if (activeFile?.fileName === fileName && updated.length > 0) {
+        setActiveFile(updated[0]);
+        setCode(updated[0].content || getDefaultCode(updated[0].language));
+        setLanguage(updated[0].language);
+      }
+    } catch {
+      alert("Failed to delete file");
+    }
+  };
+
+  const languages = ["javascript", "python", "java", "cpp", "typescript", "go"];
+  const initials = username ? username.slice(0, 2).toUpperCase() : "??";
+
+  const langColors = {
+    javascript: "#F0DB4F",
+    python: "#4B8BBE",
+    java: "#F89820",
+    cpp: "#9C6EF9",
+    typescript: "#3178C6",
+    go: "#00ADD8",
+  };
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        background: "var(--bg-base)",
+        display: "flex",
+        flexDirection: "column",
+        ...mono,
+        color: "var(--text-primary)",
+      }}
+    >
+      {showHistory && (
+        <HistoryPanel
+          roomCode={roomCode}
+          onRestore={handleRestore}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
+      {showPasswordModal && (
+        <PasswordModal
+          roomCode={roomCode}
+          onSuccess={handlePasswordSubmit}
+          onCancel={() => navigate("/home")}
+        />
+      )}
+
+      {/* File tabs */}
+      <div
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-surface)",
+        }}
+      >
+        <FileTabs
+          files={files}
+          activeFile={activeFile}
+          onSelect={handleSelectFile}
+          onAdd={handleAddFile}
+          onDelete={handleDeleteFile}
+        />
+      </div>
+
+      {/* Header */}
+      <div
+        style={{
+          background: "var(--bg-surface)",
+          borderBottom: "1px solid var(--border)",
+          padding: "0 1rem",
+          height: "44px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0,
+        }}
+      >
+        {/* Left */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <span
+            onClick={() => navigate("/home")}
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              cursor: "pointer",
+              letterSpacing: "-0.5px",
+            }}
+          >
+            PairCode
+          </span>
+          <span style={{ color: "var(--border)" }}>/</span>
+          <span style={{ fontSize: "13px", color: "#8b949e" }}>
+            {room?.name}
+          </span>
+          <span
+            style={{
+              fontSize: "11px",
+              padding: "2px 8px",
+              borderRadius: "4px",
+              background: "rgba(35,134,54,0.15)",
+              color: "#3fb950",
+              border: "1px solid rgba(63,185,80,0.25)",
+              letterSpacing: "1px",
+              fontWeight: 600,
+            }}
+          >
+            {roomCode}
+          </span>
+          <button onClick={copyRoomLink} style={ghostBtn}>
+            ⎋ copy link
+          </button>
+        </div>
+
+        {/* Right */}
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {/* Live indicator */}
+          <span
+            style={{
+              fontSize: "11px",
+              padding: "2px 8px",
+              borderRadius: "4px",
+              background: yjsConnected
+                ? "rgba(63,185,80,0.12)"
+                : "rgba(248,81,73,0.12)",
+              color: yjsConnected ? "#3fb950" : "#f85149",
+              border: `1px solid ${yjsConnected ? "rgba(63,185,80,0.25)" : "rgba(248,81,73,0.25)"}`,
+            }}
+          >
+            {yjsConnected ? "● live" : "○ offline"}
+          </span>
+          {/* Users */}
+          <span style={{ fontSize: "12px", color: "#8b949e" }}>
+            {awarenessUsers.length} online
+          </span>
+          <div
+            style={{
+              width: "1px",
+              height: "16px",
+              background: "var(--border)",
+            }}
+          />
+          {/* Lang select */}
+          <select
+            value={language}
+            onChange={(e) => {
+              setLanguage(e.target.value);
+              setCode(getDefaultCode(e.target.value));
+            }}
+            style={{
+              background: "#161b22",
+              border: "1px solid var(--border)",
+              borderRadius: "5px",
+              color: langColors[language] || "#e6edf3",
+              fontSize: "12px",
+              padding: "3px 8px",
+              cursor: "pointer",
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          >
+            {languages.map((l) => (
+              <option key={l} value={l} style={{ color: "#e6edf3" }}>
+                {l}
+              </option>
+            ))}
+          </select>
+          {/* Action buttons */}
+          <button
+            onClick={handleRunCode}
+            disabled={running}
+            style={{
+              ...actionBtn,
+              background: running
+                ? "var(--bg-elevated)"
+                : "rgba(31,111,235,0.15)",
+              color: running ? "#484f58" : "#58a6ff",
+              border: "1px solid rgba(31,111,235,0.3)",
+            }}
+          >
+            {running ? "⏳ running..." : "▶ run"}
+          </button>
+          <button
+            onClick={handleSaveSnapshot}
+            style={{
+              ...actionBtn,
+              background: "rgba(35,134,54,0.12)",
+              color: "#3fb950",
+              border: "1px solid rgba(63,185,80,0.25)",
+            }}
+          >
+            ↓ snapshot
+          </button>
+          <button onClick={() => setShowHistory(true)} style={ghostBtn}>
+            ⧖ history
+          </button>
+          {saveStatus && (
+            <span
+              style={{
+                fontSize: "11px",
+                color: saveStatus.includes("✓") ? "#3fb950" : "#e3b341",
+              }}
+            >
+              {saveStatus}
+            </span>
+          )}
+          <div
+            style={{
+              width: "1px",
+              height: "16px",
+              background: "var(--border)",
+            }}
+          />
+          <ThemeToggle /> {/* ← add here */}
+          {/* Avatar */}
+          <div
+            style={{
+              width: "26px",
+              height: "26px",
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #238636, #1f6feb)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "10px",
+              fontWeight: 700,
+              color: "var(--text-primary)",
+              flexShrink: 0,
+            }}
+          >
+            {initials}
+          </div>
+        </div>
+      </div>
+
+      {/* Main area */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        {/* Editor */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ flex: showOutput ? "0 0 65%" : "1", minHeight: 0 }}>
+            <Editor
+              key={theme}
+              height="100%"
+              language={language}
+              value={code}
+              theme={theme === "dark" ? "vs-dark" : "light"}
+              onChange={handleCodeChange}
+              onMount={(editor) => {
+                editorRef.current = editor;
+                setEditorMounted(true);
+              }}
+              options={{
+                fontSize: 14,
+                minimap: { enabled: false },
+                scrollBeyondLastLine: false,
+                padding: { top: 16 },
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                fontLigatures: true,
+              }}
+            />
+          </div>
+
+          {showOutput && (
+            <div
+              style={{
+                flex: "0 0 35%",
+                display: "flex",
+                flexDirection: "column",
+                borderTop: "1px solid var(--border)",
+                background: "var(--bg-base)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "6px 16px",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: "11px",
+                    color: "#58a6ff",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  ▶ output
+                </span>
+                <button
+                  onClick={() => setShowOutput(false)}
+                  style={{ ...ghostBtn, fontSize: "11px" }}
+                >
+                  ✕ close
+                </button>
+              </div>
+              <pre
+                style={{
+                  flex: 1,
+                  overflow: "auto",
+                  padding: "12px 16px",
+                  fontSize: "12px",
+                  color: "#3fb950",
+                  margin: 0,
+                  lineHeight: 1.6,
+                  ...mono,
+                }}
+              >
+                {output}
+              </pre>
+            </div>
+          )}
+        </div>
+
+        {/* Chat panel */}
+        <div
+          style={{
+            width: "260px",
+            flexShrink: 0,
+            display: "flex",
+            flexDirection: "column",
+            borderLeft: "1px solid var(--border)",
+            background: "var(--bg-elevated)",
+          }}
+        >
+          {/* Panel header */}
+          <div
+            style={{
+              padding: "10px 14px",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <p
+              style={{
+                fontSize: "11px",
+                color: "var(--text-faint)",
+                margin: "0 0 8px",
+                textTransform: "uppercase",
+                letterSpacing: "0.8px",
+              }}
+            >
+              — chat
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+              {awarenessUsers.map((u, i) => (
+                <span
+                  key={i}
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 7px",
+                    borderRadius: "3px",
+                    background: u.color + "22",
+                    color: "var(--text-primary)",
+                    border: `1px solid ${u.color}44`,
+                  }}
+                >
+                  ● {u.name}
+                </span>
+              ))}
+              {awarenessUsers.length === 0 &&
+                onlineUsers.map((u, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: "11px",
+                      padding: "2px 7px",
+                      borderRadius: "3px",
+                      background: "rgba(63,185,80,0.1)",
+                      color: "#3fb950",
+                      border: "1px solid rgba(63,185,80,0.2)",
+                    }}
+                  >
+                    ● {u}
+                  </span>
+                ))}
+            </div>
+          </div>
+
+          {/* Messages */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "10px 14px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}
+          >
+            {chatMessages.length === 0 && (
+              <p
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-dead)",
+                  textAlign: "center",
+                  marginTop: "2rem",
+                }}
+              >
+                no messages yet
+              </p>
+            )}
+            {chatMessages.map((msg, i) =>
+              msg.type === "CHAT" ? (
+                <div key={i}>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      color: "#3fb950",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {msg.username}{" "}
+                  </span>
+                  <span
+                    style={{ fontSize: "12px", color: "var(--text-muted)" }}
+                  >
+                    {msg.content}
+                  </span>
+                </div>
+              ) : (
+                <p
+                  key={i}
+                  style={{
+                    fontSize: "11px",
+                    color: "var(--text-dead)",
+                    textAlign: "center",
+                    margin: 0,
+                    fontStyle: "italic",
+                  }}
+                >
+                  {msg.content}
+                </p>
+              ),
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Input */}
+          <form
+            onSubmit={handleSendMessage}
+            style={{
+              padding: "10px 14px",
+              borderTop: "1px solid var(--border)",
+              display: "flex",
+              gap: "6px",
+            }}
+          >
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="message..."
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: "#161b22",
+                border: "1px solid var(--border)",
+                borderRadius: "5px",
+                padding: "6px 10px",
+                color: "#e6edf3",
+                fontSize: "12px",
+                fontFamily: "inherit",
+                outline: "none",
+              }}
+              onFocus={(e) => (e.target.style.borderColor = "#3fb950")}
+              onBlur={(e) => (e.target.style.borderColor = "#21262d")}
+            />
+            <button
+              type="submit"
+              style={{
+                background: "#238636",
+                border: "none",
+                borderRadius: "5px",
+                color: "var(--text-primary)",
+                fontSize: "12px",
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                flexShrink: 0,
+              }}
+            >
+              →
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 }
+
+const ghostBtn = {
+  background: "none",
+  border: "1px solid var(--border)",
+  borderRadius: "5px",
+  color: "var(--text-muted)",
+  fontSize: "12px",
+  padding: "3px 9px",
+  cursor: "pointer",
+  fontFamily: "'JetBrains Mono', monospace",
+  transition: "color 0.15s, border-color 0.15s",
+};
+
+const actionBtn = {
+  border: "none",
+  borderRadius: "5px",
+  fontSize: "12px",
+  padding: "3px 10px",
+  cursor: "pointer",
+  fontFamily: "'JetBrains Mono', monospace",
+  fontWeight: 600,
+  transition: "opacity 0.15s",
+};

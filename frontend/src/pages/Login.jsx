@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { login, register } from '../services/api';
 
 export default function Login() {
@@ -14,80 +14,239 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const res = isLogin ? await login(form) : await register(form);
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('username', form.username);
+      isLogin ? await login(form) : await register(form);
       navigate('/home');
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong');
+      const status = err.response?.status;
+      const message = err.response?.data?.message;
+      if (isLogin) {
+        if (status === 401) setError('incorrect username or password.');
+        else if (status === 404) setError('user not found. please register first.');
+        else if (status === 400) setError('please fill in all fields.');
+        else setError(message || 'login failed. please try again.');
+      } else {
+        if (status === 409) setError('username already taken. try a different one.');
+        else if (status === 400) setError('please fill all fields correctly.');
+        else setError(message || 'registration failed. please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0d1117]">
-        <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-8 w-full max-w-md">
-          <h1 className="text-2xl font-bold text-center mb-2 text-white">
-            🔥 PairForge
-          </h1>
-          <p className="text-center text-gray-400 mb-6 text-sm">
-            Real-time collaborative code editor
-          </p>
+      <div style={{
+        minHeight: '100vh',
+        background: '#0a0c10',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        color: '#e6edf3',
+        padding: '2rem',
+      }}>
+        {/* Subtle grid bg */}
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 0,
+          backgroundImage: 'linear-gradient(#21262d 1px, transparent 1px), linear-gradient(90deg, #21262d 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          opacity: 0.25,
+          pointerEvents: 'none',
+        }} />
 
-          <div className="flex mb-6 bg-[#0d1117] rounded-lg p-1">
-            <button
-                onClick={() => setIsLogin(true)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
-                    isLogin ? 'bg-[#238636] text-white' : 'text-gray-400'
-                }`}>
-              Login
-            </button>
-            <button
-                onClick={() => setIsLogin(false)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition ${
-                    !isLogin ? 'bg-[#238636] text-white' : 'text-gray-400'
-                }`}>
-              Register
-            </button>
+        <div style={{ position: 'relative', zIndex: 1, width: '100%', maxWidth: '400px' }}>
+
+          {/* Logo */}
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <p style={{ fontSize: '22px', fontWeight: 700, margin: '0 0 6px', letterSpacing: '-0.5px', color: '#fff' }}>
+              PairCode
+            </p>
+            <p style={{ fontSize: '12px', color: '#484f58', margin: 0, letterSpacing: '0.5px' }}>
+              real-time collaborative code editor
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-                type="text"
-                placeholder="Username"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#238636]"
-                required
-            />
-            {!isLogin && (
-                <input
-                    type="email"
-                    placeholder="Email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#238636]"
-                    required
-                />
-            )}
-            <input
-                type="password"
-                placeholder="Password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full bg-[#0d1117] border border-[#30363d] rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-[#238636]"
-                required
-            />
-            {error && <p className="text-red-400 text-sm">{error}</p>}
-            <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-[#238636] hover:bg-[#2ea043] text-white py-2 rounded-lg font-medium transition disabled:opacity-50">
-              {loading ? 'Please wait...' : isLogin ? 'Login' : 'Register'}
-            </button>
-          </form>
+          {/* Card */}
+          <div style={{
+            background: '#0d1117',
+            border: '1px solid #21262d',
+            borderRadius: '10px',
+            overflow: 'hidden',
+          }}>
+            {/* Tab switcher */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              borderBottom: '1px solid #21262d',
+            }}>
+              {['login', 'register'].map((tab) => {
+                const active = (tab === 'login') === isLogin;
+                return (
+                    <button
+                        key={tab}
+                        onClick={() => { setIsLogin(tab === 'login'); setError(''); }}
+                        style={{
+                          background: active ? '#161b22' : 'transparent',
+                          border: 'none',
+                          borderRight: tab === 'login' ? '1px solid #21262d' : 'none',
+                          padding: '14px',
+                          color: active ? '#e6edf3' : '#484f58',
+                          fontSize: '12px',
+                          fontFamily: 'inherit',
+                          fontWeight: active ? 600 : 400,
+                          cursor: 'pointer',
+                          letterSpacing: '0.5px',
+                          transition: 'all 0.15s',
+                          borderBottom: active ? '2px solid #3fb950' : '2px solid transparent',
+                        }}
+                    >
+                      {tab}
+                    </button>
+                );
+              })}
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} style={{ padding: '1.75rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+                <div>
+                  <label style={labelStyle}>username</label>
+                  <input
+                      type="text"
+                      placeholder="your_username"
+                      value={form.username}
+                      onChange={e => setForm({ ...form, username: e.target.value })}
+                      required
+                      style={inputStyle}
+                      onFocus={e => e.target.style.borderColor = '#3fb950'}
+                      onBlur={e => e.target.style.borderColor = '#21262d'}
+                  />
+                </div>
+
+                {!isLogin && (
+                    <div>
+                      <label style={labelStyle}>email</label>
+                      <input
+                          type="email"
+                          placeholder="you@example.com"
+                          value={form.email}
+                          onChange={e => setForm({ ...form, email: e.target.value })}
+                          required
+                          style={inputStyle}
+                          onFocus={e => e.target.style.borderColor = '#3fb950'}
+                          onBlur={e => e.target.style.borderColor = '#21262d'}
+                      />
+                    </div>
+                )}
+
+                <div>
+                  <label style={labelStyle}>password</label>
+                  <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={e => setForm({ ...form, password: e.target.value })}
+                      required
+                      style={inputStyle}
+                      onFocus={e => e.target.style.borderColor = '#3fb950'}
+                      onBlur={e => e.target.style.borderColor = '#21262d'}
+                  />
+                </div>
+
+                {error && (
+                    <div style={{
+                      background: 'rgba(248,81,73,0.08)',
+                      border: '1px solid rgba(248,81,73,0.25)',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      fontSize: '12px',
+                      color: '#f85149',
+                      letterSpacing: '0.2px',
+                    }}>
+                      ✗ {error}
+                    </div>
+                )}
+
+                <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      marginTop: '6px',
+                      padding: '11px',
+                      background: loading ? '#161b22' : '#238636',
+                      border: 'none',
+                      borderRadius: '6px',
+                      color: loading ? '#484f58' : '#fff',
+                      fontSize: '13px',
+                      fontFamily: 'inherit',
+                      fontWeight: 600,
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      letterSpacing: '0.3px',
+                      transition: 'all 0.15s',
+                      width: '100%',
+                    }}
+                    onMouseOver={e => { if (!loading) e.target.style.background = '#2ea043'; }}
+                    onMouseOut={e => { if (!loading) e.target.style.background = '#238636'; }}
+                >
+                  {loading ? 'please wait...' : isLogin ? '→ login' : '→ create account'}
+                </button>
+              </div>
+            </form>
+
+            {/* Footer */}
+            <div style={{
+              borderTop: '1px solid #21262d',
+              padding: '14px 1.75rem',
+              textAlign: 'center',
+            }}>
+                        <span style={{ fontSize: '12px', color: '#484f58' }}>
+                            {isLogin ? "don't have an account? " : 'already have an account? '}
+                        </span>
+              <button
+                  onClick={() => { setIsLogin(!isLogin); setError(''); }}
+                  style={{
+                    background: 'none', border: 'none',
+                    color: '#3fb950', fontSize: '12px',
+                    fontFamily: 'inherit', cursor: 'pointer',
+                    padding: 0, textDecoration: 'underline',
+                    textUnderlineOffset: '2px',
+                  }}
+              >
+                {isLogin ? 'register' : 'login'}
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom hint */}
+          <p style={{ textAlign: 'center', fontSize: '11px', color: '#30363d', marginTop: '1.5rem' }}>
+            paircode · collaborative coding
+          </p>
         </div>
       </div>
   );
 }
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '11px',
+  color: '#484f58',
+  marginBottom: '5px',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
+};
+
+const inputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  background: '#161b22',
+  border: '1px solid #21262d',
+  borderRadius: '6px',
+  padding: '9px 12px',
+  color: '#e6edf3',
+  fontSize: '13px',
+  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+  outline: 'none',
+  transition: 'border-color 0.15s',
+};

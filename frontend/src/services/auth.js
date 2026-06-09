@@ -1,12 +1,8 @@
-export function saveToken(token) {
-  localStorage.setItem("pairforge_token", token);
-}
-
-export function getToken() {
-  return localStorage.getItem("pairforge_token");
-}
-
+// No more localStorage — cookie is handled by browser automatically
 export function clearToken() {
-  localStorage.removeItem("pairforge_token");
+  // just calls logout endpoint which clears the cookie
+  return fetch('http://localhost:8080/api/auth/logout', {
+    method: 'POST',
+    credentials: 'include'
+  })
 }
-
