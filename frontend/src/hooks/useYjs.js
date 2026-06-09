@@ -41,7 +41,7 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
 
         // Connect to Yjs server
         const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsUrl = `${wsProtocol}//${window.location.hostname}:1234`
+        const wsUrl = "wss://paircode-yjs.onrender.com"`
 
         const provider = new WebsocketProvider(wsUrl, docId, ydoc)
         providerRef.current = provider
