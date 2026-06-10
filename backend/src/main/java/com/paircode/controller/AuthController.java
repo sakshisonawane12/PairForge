@@ -1,19 +1,26 @@
 package com.paircode.controller;
 
-import com.paircode.dto.AuthRequest;
-import com.paircode.dto.AuthResponse;
-import com.paircode.dto.RegisterRequest;
-import com.paircode.exception.UserAlreadyExistsException;
-import com.paircode.service.AuthService;
-import jakarta.servlet.http.HttpServletResponse;
+import java.time.Duration;
+import java.util.Map;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.paircode.dto.AuthRequest;
+import com.paircode.dto.AuthResponse;
+import com.paircode.dto.RegisterRequest;
 import com.paircode.exception.InvalidCredentialsException;
-import java.time.Duration;
-import java.util.Map;
+import com.paircode.exception.UserAlreadyExistsException;
+import com.paircode.service.AuthService;
+
+import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -45,8 +52,8 @@ public class AuthController {
     public ResponseEntity<Void> logout(HttpServletResponse response) {
         ResponseCookie cookie = ResponseCookie.from("jwt", "")
                 .httpOnly(true)
-                .secure(false)
-                .sameSite("Strict")
+                .secure(true)
+                .sameSite("None")
                 .path("/")
                 .maxAge(0)
                 .build();
@@ -57,8 +64,8 @@ public class AuthController {
     private void setJwtCookie(HttpServletResponse response, String token) {
         ResponseCookie cookie = ResponseCookie.from("jwt", token)
                 .httpOnly(true)
-                .secure(false)        // set true in production (HTTPS)
-                .sameSite("Strict")
+                .secure(true)        // set true in production (HTTPS)
+                .sameSite("None")
                 .path("/")
                 .maxAge(Duration.ofDays(7))
                 .build();
