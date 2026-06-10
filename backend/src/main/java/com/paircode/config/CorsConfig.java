@@ -18,6 +18,7 @@ public class CorsConfig {
                 "http://localhost:5173",
                 "http://localhost:5174",
                 "http://localhost:3000"
+                "https://pair-code-seven.vercel.app"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
