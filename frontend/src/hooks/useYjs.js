@@ -106,13 +106,6 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     awareness.on("update", updateUsers);
     updateUsers();
 
-    editor.onDidChangeCursorPosition((e) => {
-      awareness.setLocalStateField("cursor", {
-        line: e.position.lineNumber,
-        column: e.position.column,
-      });
-    });
-
     // Bind Yjs to Monaco
     const yText = ydoc.getText("content");
     bindingRef.current = new MonacoBinding(
@@ -132,7 +125,7 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
       providerRef.current = null;
       docRef.current = null;
     };
-  }, [roomCode, fileName, username]);
+  }, [roomCode, fileName, username, editorRef?.current]);
 
   return { connected, awarenessUsers };
 }
