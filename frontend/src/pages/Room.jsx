@@ -88,12 +88,19 @@ export default function Room() {
   const { messages, connected, sendMessage, sendFileCreated, onlineUsers } =
     useWebSocket(roomCode, username, handleRemoteFileCreated);
 
-  const { connected: yjsConnected, awarenessUsers } = useYjs(
+  const { connected: yjsConnected, awarenessUsers, sharedLanguage, setLanguage: setSharedLanguage } = useYjs(
     roomCode,
     activeFile?.fileName,
     username,
     editorMounted ? editorRef : null,
   );
+
+  // When another user changes language, sync it locally
+  useEffect(() => {
+    if (sharedLanguage && sharedLanguage !== language) {
+      setLanguage(sharedLanguage);
+    }
+  }, [sharedLanguage]);
 
   useEffect(() => {
     if (loadedRef.current) return;
@@ -173,7 +180,6 @@ export default function Room() {
   };
 
   const handleCodeChange = (val) => {
-    setCode(val || "");
     if (activeFile) fileContentsRef.current[activeFile.fileName] = val || "";
     setSaveStatus("saving...");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -200,7 +206,8 @@ export default function Room() {
     setShowOutput(true);
     setOutput("running...");
     try {
-      const res = await executeCode({ code, language });
+      const currentCode = editorRef.current?.getValue() ?? code;
+      const res = await executeCode({ code: currentCode, language });
       const data = res.data;
       setOutput(
         `exit: ${data.status}\n\n${data.stdout || data.stderr || "no output"}`,
@@ -219,7 +226,7 @@ export default function Room() {
 
   const handleSaveSnapshot = async () => {
     try {
-      await saveSnapshot(roomCode, { content: code, language });
+      await saveSnapshot(roomCode, { content: editorRef.current?.getValue() ?? code, language });
       setSaveStatus("snapshot saved ✓");
       setTimeout(() => setSaveStatus(""), 2000);
     } catch {
@@ -422,7 +429,7 @@ export default function Room() {
             value={language}
             onChange={(e) => {
               setLanguage(e.target.value);
-              setCode(getDefaultCode(e.target.value));
+              setSharedLanguage(e.target.value);
             }}
             style={{
               background: "#161b22",
@@ -523,10 +530,9 @@ export default function Room() {
         >
           <div style={{ flex: showOutput ? "0 0 65%" : "1", minHeight: 0 }}>
             <Editor
-              key={theme}
               height="100%"
               language={language}
-              value={code}
+              defaultValue={code}
               keepCurrentModel={true}
               theme={theme === "dark" ? "vs-dark" : "light"}
               onChange={handleCodeChange}

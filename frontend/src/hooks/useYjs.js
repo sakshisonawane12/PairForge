@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { MonacoBinding } from "y-monaco";
@@ -6,32 +6,20 @@ import { MonacoBinding } from "y-monaco";
 export default function useYjs(roomCode, fileName, username, editorRef) {
   const [connected, setConnected] = useState(false);
   const [awarenessUsers, setAwarenessUsers] = useState([]);
+  const [sharedLanguage, setSharedLanguage] = useState(null);
   const docRef = useRef(null);
   const providerRef = useRef(null);
   const bindingRef = useRef(null);
 
   useEffect(() => {
-    if (!roomCode || !fileName || !editorRef?.current) {
-      console.log("useYjs blocked:", {
-        roomCode,
-        fileName,
-        hasEditor: !!editorRef?.current,
-      });
-      return;
-    }
+    if (!roomCode || !fileName || !editorRef?.current) return;
 
     const editor = editorRef.current;
     const model = editor.getModel();
+    if (!model) return;
 
-    if (!model) {
-      console.log("useYjs: No model available yet");
-      return;
-    }
-
-    console.log("useYjs starting for:", roomCode, fileName);
     const docId = `${roomCode}-${fileName}`;
 
-    // Cleanup previous
     bindingRef.current?.destroy();
     providerRef.current?.destroy();
     docRef.current?.destroy();
@@ -39,24 +27,20 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     providerRef.current = null;
     docRef.current = null;
 
-    // Create Yjs document
     const ydoc = new Y.Doc();
     docRef.current = ydoc;
 
-    // Connect to Yjs server
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = "wss://paircode-yjs.onrender.com";
-
     const provider = new WebsocketProvider(wsUrl, docId, ydoc);
     providerRef.current = provider;
 
-    provider.on("status", ({ status }) => {
-      console.log("Yjs status:", status);
-      setConnected(status === "connected");
-    });
+    provider.on("status", ({ status }) => setConnected(status === "connected"));
 
-    provider.on("sync", (isSynced) => {
-      console.log("Yjs synced:", isSynced);
+    // Shared language map — synced across all users via Yjs
+    const yMeta = ydoc.getMap("meta");
+    yMeta.observe(() => {
+      const lang = yMeta.get("language");
+      if (lang) setSharedLanguage(lang);
     });
 
     // Assign color based on username
@@ -64,34 +48,43 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     const colorIndex =
       Math.abs(username.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) %
       colors.length;
+    const color = colors[colorIndex];
 
     const awareness = provider.awareness;
-
     awareness.setLocalStateField("user", {
       name: username,
-      color: colors[colorIndex],
-      colorLight: colors[colorIndex] + "33",
-    });
-    awareness.on("change", () => {
-      console.log("Awareness states:", awareness.getStates());
+      color,
+      colorLight: color + "33",
     });
 
-    // Inject dynamic CSS for this user's cursor color
+    // Inject cursor CSS with username label
     const styleId = `yjs-cursor-${username}`;
     if (!document.getElementById(styleId)) {
       const style = document.createElement("style");
       style.id = styleId;
       style.textContent = `
-        .yRemoteSelection-${colorIndex} {
-            background-color: ${colors[colorIndex]}33;
-        }
+        .yRemoteSelection-${colorIndex} { background-color: ${color}33; }
         .yRemoteSelectionHead-${colorIndex} {
-            border-color: ${colors[colorIndex]};
+          border-left: 2px solid ${color};
+          border-top: 2px solid ${color};
+          position: relative;
         }
         .yRemoteSelectionHead-${colorIndex}::after {
-            background-color: ${colors[colorIndex]};
+          content: "${username}";
+          background: ${color};
+          color: #fff;
+          font-size: 10px;
+          font-family: monospace;
+          padding: 1px 4px;
+          border-radius: 2px;
+          position: absolute;
+          top: -18px;
+          left: 0;
+          white-space: nowrap;
+          pointer-events: none;
+          z-index: 100;
         }
-    `;
+      `;
       document.head.appendChild(style);
     }
 
@@ -102,22 +95,13 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
       });
       setAwarenessUsers(users);
     };
-
     awareness.on("update", updateUsers);
     updateUsers();
 
-    // Bind Yjs to Monaco
     const yText = ydoc.getText("content");
-    bindingRef.current = new MonacoBinding(
-      yText,
-      model,
-      new Set([editor]),
-      awareness,
-    );
-    console.log("MonacoBinding created for:", fileName);
-    console.log("MonacoBinding created for:", fileName, "model:", model.id);
+    bindingRef.current = new MonacoBinding(yText, model, new Set([editor]), awareness);
+
     return () => {
-      console.log("Cleaning up Yjs for:", fileName);
       bindingRef.current?.destroy();
       providerRef.current?.destroy();
       docRef.current?.destroy();
@@ -127,5 +111,10 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     };
   }, [roomCode, fileName, username, editorRef?.current]);
 
-  return { connected, awarenessUsers };
+  const setLanguage = useCallback((lang) => {
+    const yMeta = docRef.current?.getMap("meta");
+    if (yMeta) yMeta.set("language", lang);
+  }, []);
+
+  return { connected, awarenessUsers, sharedLanguage, setLanguage };
 }
