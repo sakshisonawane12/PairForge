@@ -526,7 +526,7 @@ export default function Room() {
               key={theme}
               height="100%"
               language={language}
-              value={code}
+              defaultValue={code}
               keepCurrentModel={true}
               theme={theme === "dark" ? "vs-dark" : "light"}
               onChange={handleCodeChange}
