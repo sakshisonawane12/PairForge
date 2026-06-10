@@ -16,7 +16,8 @@ export default function useWebSocket(roomCode, username, onFileCreated) {
     activatedRef.current = true;
 
     const client = new Client({
-      webSocketFactory: () => new SockJS("https://paircode-q4k4.onrender.com"),
+      webSocketFactory: () =>
+        new SockJS("https://paircode-q4k4.onrender.com/ws"),
       reconnectDelay: 5000,
 
       onConnect: () => {
