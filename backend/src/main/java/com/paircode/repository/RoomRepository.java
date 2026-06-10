@@ -10,4 +10,5 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     Optional<Room> findByRoomCode(String roomCode);
     List<Room> findByCreatedBy(User user);
     boolean existsByRoomCode(String roomCode);
+    List<Room> findAllByOrderByCreatedAtDesc();
 }

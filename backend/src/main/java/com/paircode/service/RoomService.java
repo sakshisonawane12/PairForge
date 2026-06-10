@@ -50,6 +50,10 @@ public class RoomService {
                 .orElseThrow(() -> new RuntimeException("User not found"));
         return roomRepository.findByCreatedBy(user);
     }
+
+    public List<Room> getAllRooms() {
+        return roomRepository.findAllByOrderByCreatedAtDesc();
+    }
     public void updateRoomCode(String roomCode, String content) {
         Room room = roomRepository.findByRoomCode(roomCode)
                 .orElseThrow(() -> new RuntimeException("Room not found"));

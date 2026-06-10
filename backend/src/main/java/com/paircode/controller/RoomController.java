@@ -44,6 +44,11 @@ public class RoomController {
             @AuthenticationPrincipal UserDetails userDetails) {
         return ResponseEntity.ok(roomService.getMyRooms(userDetails.getUsername()));
     }
+
+    @GetMapping("/all")
+    public ResponseEntity<List<Room>> getAllRooms() {
+        return ResponseEntity.ok(roomService.getAllRooms());
+    }
     @GetMapping("/{roomCode}")
     public ResponseEntity<Room> getRoom(@PathVariable String roomCode) {
         return ResponseEntity.ok(roomService.getRoomByCode(roomCode));

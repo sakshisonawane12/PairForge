@@ -10,6 +10,7 @@ export const login = (data) => API.post("/api/auth/login", data);
 export const createRoom = (data) => API.post("/api/rooms/create", data);
 export const getRoom = (code) => API.get(`/api/rooms/${code}`);
 export const getMyRooms = () => API.get("/api/rooms/my-rooms");
+export const getAllRooms = () => API.get("/api/rooms/all");
 export const getChatHistory = (code) => API.get(`/api/rooms/${code}/messages`);
 export const executeCode = (data) => API.post("/api/execute", data);
 export const verifyRoomPassword = (code, password) =>
