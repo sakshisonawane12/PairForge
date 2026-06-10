@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { createRoom, getMyRooms, getMyProfile } from "../services/api";
+import { createRoom, getMyRooms, getMyProfile, getRoom } from "../services/api";
 import { clearToken } from "../services/auth";
 import ThemeToggle from "../components/ThemeToggle";
 import { useTheme } from "../context/ThemeContext";
@@ -19,8 +19,24 @@ export default function Home() {
     getMyProfile()
       .then((res) => setUsername(res.data.username))
       .catch(() => {});
+
+    // Fetch owned rooms
     getMyRooms()
-      .then((res) => setMyRooms(res.data))
+      .then(async (res) => {
+        const owned = res.data;
+        // Also fetch any visited rooms stored in localStorage
+        const visited = JSON.parse(localStorage.getItem("visitedRooms") || "[]");
+        const ownedCodes = new Set(owned.map((r) => r.roomCode));
+        const extraCodes = visited.filter((code) => !ownedCodes.has(code));
+        if (extraCodes.length === 0) { setMyRooms(owned); return; }
+        const extras = await Promise.allSettled(
+          extraCodes.map((code) => getRoom(code))
+        );
+        const extraRooms = extras
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => r.value.data);
+        setMyRooms([...owned, ...extraRooms]);
+      })
       .catch(() => {});
   }, []);
 

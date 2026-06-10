@@ -51,6 +51,14 @@ export default function Room() {
 
   const chatEndRef = useRef(null);
   const saveTimerRef = useRef(null);
+
+  // Save visited room to localStorage so it appears in Home recent rooms
+  useEffect(() => {
+    if (!roomCode) return;
+    const visited = JSON.parse(localStorage.getItem("visitedRooms") || "[]");
+    if (!visited.includes(roomCode))
+      localStorage.setItem("visitedRooms", JSON.stringify([...visited, roomCode]));
+  }, [roomCode]);
   const loadedRef = useRef(false);
   const fileContentsRef = useRef({});
   const activeFileRef = useRef(null);
