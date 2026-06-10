@@ -527,6 +527,7 @@ export default function Room() {
               height="100%"
               language={language}
               value={code}
+              keepCurrentModel={true}
               theme={theme === "dark" ? "vs-dark" : "light"}
               onChange={handleCodeChange}
               onMount={(editor) => {
@@ -540,6 +541,8 @@ export default function Room() {
                 padding: { top: 16 },
                 fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 fontLigatures: true,
+                cursorSmoothCaretAnimation: "on",
+                cursorBlinking: "smooth",
               }}
             />
           </div>

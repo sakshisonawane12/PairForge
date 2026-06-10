@@ -70,7 +70,27 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     awareness.setLocalStateField("user", {
       name: username,
       color: colors[colorIndex],
+      colorLight: colors[colorIndex] + "33",
     });
+
+    // Inject dynamic CSS for this user's cursor color
+    const styleId = `yjs-cursor-${username}`;
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        .yRemoteSelection-${colorIndex} {
+            background-color: ${colors[colorIndex]}33;
+        }
+        .yRemoteSelectionHead-${colorIndex} {
+            border-color: ${colors[colorIndex]};
+        }
+        .yRemoteSelectionHead-${colorIndex}::after {
+            background-color: ${colors[colorIndex]};
+        }
+    `;
+      document.head.appendChild(style);
+    }
 
     const updateUsers = () => {
       const users = [];
