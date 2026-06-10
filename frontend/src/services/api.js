@@ -1,8 +1,8 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://paircode-q4k4.onrender.com",
-  withCredentials: true,
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8080",
+  withCredentials: true, // ← must be true for HttpOnly cookies
 });
 
 export const register = (data) => API.post("/api/auth/register", data);
