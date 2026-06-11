@@ -101,6 +101,7 @@ export default function Room() {
     activeFile?.fileName,
     username,
     editorMounted ? editorRef : null,
+    activeFile ? (fileContentsRef.current[activeFile.fileName] ?? activeFile.content ?? "") : "",
   );
 
   // When another user changes language, sync it locally
@@ -540,8 +541,8 @@ export default function Room() {
             <Editor
               height="100%"
               language={language}
-              defaultValue={code}
-              keepCurrentModel={true}
+              defaultValue=""
+              keepCurrentModel={false}
               theme={theme === "dark" ? "vs-dark" : "light"}
               onChange={handleCodeChange}
               onMount={(editor) => {
@@ -557,6 +558,9 @@ export default function Room() {
                 fontLigatures: true,
                 cursorSmoothCaretAnimation: "on",
                 cursorBlinking: "smooth",
+                tabSize: 2,
+                insertSpaces: true,
+                detectIndentation: false,
               }}
             />
           </div>

@@ -3,7 +3,7 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import { MonacoBinding } from "y-monaco";
 
-export default function useYjs(roomCode, fileName, username, editorRef) {
+export default function useYjs(roomCode, fileName, username, editorRef, initialContent) {
   const [connected, setConnected] = useState(false);
   const [awarenessUsers, setAwarenessUsers] = useState([]);
   const [sharedLanguage, setSharedLanguage] = useState(null);
@@ -35,6 +35,18 @@ export default function useYjs(roomCode, fileName, username, editorRef) {
     providerRef.current = provider;
 
     provider.on("status", ({ status }) => setConnected(status === "connected"));
+
+    // Wait for sync — if doc is still empty after sync, seed with DB content
+    provider.on("sync", (isSynced) => {
+      if (isSynced) {
+        const yText = ydoc.getText("content");
+        if (yText.length === 0 && initialContent) {
+          ydoc.transact(() => {
+            yText.insert(0, initialContent);
+          });
+        }
+      }
+    });
 
     // Shared language map — synced across all users via Yjs
     const yMeta = ydoc.getMap("meta");

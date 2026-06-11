@@ -6,13 +6,43 @@ export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [form, setForm] = useState({ username: '', email: '', password: '' });
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  const validate = () => {
+    const errs = {};
+    if (form.username.length < 3)
+      errs.username = 'min 3 characters';
+    else if (form.username.length > 20)
+      errs.username = 'max 20 characters';
+    else if (!/^[a-zA-Z0-9_]+$/.test(form.username))
+      errs.username = 'only letters, numbers, underscores';
+
+    if (!isLogin) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+        errs.email = 'enter a valid email';
+      if (form.password.length < 8)
+        errs.password = 'min 8 characters';
+      else if (form.password.length > 64)
+        errs.password = 'max 64 characters';
+      else if (!/[A-Z]/.test(form.password))
+        errs.password = 'must include at least one uppercase letter';
+      else if (!/[0-9]/.test(form.password))
+        errs.password = 'must include at least one number';
+    }
+    return errs;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    if (!isLogin) {
+      const errs = validate();
+      if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    }
+    setFieldErrors({});
+    setLoading(true);
     try {
       isLogin ? await login(form) : await register(form);
       navigate('/home');
@@ -117,12 +147,14 @@ export default function Login() {
                       type="text"
                       placeholder="your_username"
                       value={form.username}
-                      onChange={e => setForm({ ...form, username: e.target.value })}
+                      onChange={e => { setForm({ ...form, username: e.target.value }); setFieldErrors(p => ({...p, username: ''})); }}
                       required
                       style={inputStyle}
                       onFocus={e => e.target.style.borderColor = '#3fb950'}
                       onBlur={e => e.target.style.borderColor = '#21262d'}
                   />
+                  {!isLogin && <p style={hintStyle}>3-20 chars, letters/numbers/underscore only</p>}
+                  {fieldErrors.username && <p style={errStyle}>✗ {fieldErrors.username}</p>}
                 </div>
 
                 {!isLogin && (
@@ -132,12 +164,13 @@ export default function Login() {
                           type="email"
                           placeholder="you@example.com"
                           value={form.email}
-                          onChange={e => setForm({ ...form, email: e.target.value })}
+                          onChange={e => { setForm({ ...form, email: e.target.value }); setFieldErrors(p => ({...p, email: ''})); }}
                           required
                           style={inputStyle}
                           onFocus={e => e.target.style.borderColor = '#3fb950'}
                           onBlur={e => e.target.style.borderColor = '#21262d'}
                       />
+                      {fieldErrors.email && <p style={errStyle}>✗ {fieldErrors.email}</p>}
                     </div>
                 )}
 
@@ -147,12 +180,14 @@ export default function Login() {
                       type="password"
                       placeholder="••••••••"
                       value={form.password}
-                      onChange={e => setForm({ ...form, password: e.target.value })}
+                      onChange={e => { setForm({ ...form, password: e.target.value }); setFieldErrors(p => ({...p, password: ''})); }}
                       required
                       style={inputStyle}
                       onFocus={e => e.target.style.borderColor = '#3fb950'}
                       onBlur={e => e.target.style.borderColor = '#21262d'}
                   />
+                  {!isLogin && <p style={hintStyle}>min 8 chars, 1 uppercase, 1 number</p>}
+                  {fieldErrors.password && <p style={errStyle}>✗ {fieldErrors.password}</p>}
                 </div>
 
                 {error && (
@@ -190,7 +225,7 @@ export default function Login() {
                     onMouseOver={e => { if (!loading) e.target.style.background = '#2ea043'; }}
                     onMouseOut={e => { if (!loading) e.target.style.background = '#238636'; }}
                 >
-                  {loading ? 'please wait...' : isLogin ? '→ login' : '→ create account'}
+                  {loading ? (isLogin ? 'signing in...' : 'creating account, please wait...') : isLogin ? '→ login' : '→ create account'}
                 </button>
               </div>
             </form>
@@ -249,4 +284,16 @@ const inputStyle = {
   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
   outline: 'none',
   transition: 'border-color 0.15s',
+};
+
+const errStyle = {
+  margin: '4px 0 0',
+  fontSize: '11px',
+  color: '#f85149',
+};
+
+const hintStyle = {
+  margin: '4px 0 0',
+  fontSize: '11px',
+  color: '#484f58',
 };

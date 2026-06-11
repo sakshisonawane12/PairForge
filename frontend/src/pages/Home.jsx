@@ -7,7 +7,10 @@ import { useTheme } from "../context/ThemeContext";
 
 export default function Home() {
   const [roomName, setRoomName] = useState("");
+  const [roomNameError, setRoomNameError] = useState("");
   const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [joinLoading, setJoinLoading] = useState(false);
   const [roomPassword, setRoomPassword] = useState("");
   const [myRooms, setMyRooms] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -26,6 +29,11 @@ export default function Home() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (!/^[a-zA-Z\s]+$/.test(roomName.trim())) {
+      setRoomNameError("room name must contain letters only, no digits or symbols");
+      return;
+    }
+    setRoomNameError("");
     setLoading(true);
     try {
       const res = await createRoom({ name: roomName, password: roomPassword });
@@ -37,9 +45,20 @@ export default function Home() {
     }
   };
 
-  const handleJoin = (e) => {
+  const handleJoin = async (e) => {
     e.preventDefault();
-    if (joinCode.trim()) navigate(`/room/${joinCode.trim().toUpperCase()}`);
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    setJoinLoading(true);
+    setJoinError("");
+    try {
+      await getRoom(code);
+      navigate(`/room/${code}`);
+    } catch {
+      setJoinError("no room found with this code");
+    } finally {
+      setJoinLoading(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -262,16 +281,17 @@ export default function Home() {
             >
               <input
                 type="text"
-                placeholder="room name"
+                placeholder="room name (letters only)"
                 value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
+                onChange={(e) => { setRoomName(e.target.value); setRoomNameError(""); }}
                 required
                 style={inputStyle()}
-                onFocus={(e) =>
-                  (e.target.style.borderColor = "var(--accent-green)")
-                }
+                onFocus={(e) => (e.target.style.borderColor = "var(--accent-green)")}
                 onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
               />
+              {roomNameError && (
+                <p style={{ margin: 0, fontSize: "11px", color: "#f85149" }}>✗ {roomNameError}</p>
+              )}
               <input
                 type="password"
                 placeholder="password (optional)"
@@ -337,20 +357,18 @@ export default function Home() {
                 type="text"
                 placeholder="enter room code"
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
+                onChange={(e) => { setJoinCode(e.target.value); setJoinError(""); }}
                 required
-                style={{
-                  ...inputStyle(),
-                  textTransform: "uppercase",
-                  letterSpacing: "2px",
-                }}
-                onFocus={(e) =>
-                  (e.target.style.borderColor = "var(--accent-blue)")
-                }
+                style={{ ...inputStyle(), textTransform: "uppercase", letterSpacing: "2px" }}
+                onFocus={(e) => (e.target.style.borderColor = "var(--accent-blue)")}
                 onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
               />
+              {joinError && (
+                <p style={{ margin: 0, fontSize: "11px", color: "#f85149" }}>✗ {joinError}</p>
+              )}
               <button
                 type="submit"
+                disabled={joinLoading}
                 style={{
                   marginTop: "4px",
                   padding: "10px",
@@ -361,19 +379,13 @@ export default function Home() {
                   fontSize: "13px",
                   fontFamily: "inherit",
                   fontWeight: 600,
-                  cursor: "pointer",
+                  cursor: joinLoading ? "not-allowed" : "pointer",
                   transition: "all 0.15s",
                 }}
-                onMouseOver={(e) => {
-                  e.target.style.background = "var(--accent-blue)";
-                  e.target.style.color = "#fff";
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.background = "transparent";
-                  e.target.style.color = "var(--accent-blue)";
-                }}
+                onMouseOver={(e) => { if (!joinLoading) { e.target.style.background = "var(--accent-blue)"; e.target.style.color = "#fff"; } }}
+                onMouseOut={(e) => { e.target.style.background = "transparent"; e.target.style.color = "var(--accent-blue)"; }}
               >
-                → join
+                {joinLoading ? "checking..." : "→ join"}
               </button>
             </form>
           </div>
